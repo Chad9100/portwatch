@@ -15,13 +15,14 @@ Requires Python 3.10+. This installs a `portwatch` command (also `python -m port
 ## Usage
 
 ```
-portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json]
+portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json] [--services]
 portwatch snapshot FILE [filters]
 portwatch diff     FILE [filters] [--json]
 ```
 
 - `--port` takes a port, a list or ranges: `80`, `80,443`, `8000-8100,22`.
 - `--proc` is a case-insensitive substring of the process name.
+- `--services` (list only) adds a SERVICE column (a `service` field in JSON, `null` if unknown) from a built-in table of well-known ports such as 22 ssh and 443 https.
 - TCP rows are listening sockets; UDP rows are bound sockets (UDP has no listen state).
 - `diff` reports ports opened, closed, or whose owning process changed since the snapshot.
 - Exit code is 0 on success and 2 on errors (bad snapshot, missing system tools).
@@ -31,7 +32,7 @@ On Windows the parser expects English `netstat` output (the `LISTENING` state te
 
 ## Example (real output)
 
-The block below was captured by running the commands on a Windows 11 PC. The only edit is that two private network addresses in the first table were replaced with the documentation addresses 192.0.2.10 and 192.0.2.11.
+The block below was captured by running the commands on a Windows 11 PC. The only edit is that two private network addresses in the first two tables were replaced with the documentation addresses 192.0.2.10 and 192.0.2.11.
 
 ```
 $ portwatch list --proto tcp --port 1-1024
@@ -42,6 +43,15 @@ tcp    192.0.2.10       139   4     System
 tcp    192.0.2.11       139   4     System
 tcp    0.0.0.0          445   4     System
 tcp    ::               445   4     System
+
+$ portwatch list --proto tcp --port 1-1024 --services
+PROTO  ADDRESS     PORT  PID   PROCESS      SERVICE
+tcp    0.0.0.0     135   1632  svchost.exe  msrpc
+tcp    ::          135   1632  svchost.exe  msrpc
+tcp    192.0.2.10  139   4     System       netbios-ssn
+tcp    192.0.2.11  139   4     System       netbios-ssn
+tcp    0.0.0.0     445   4     System       smb
+tcp    ::          445   4     System       smb
 
 $ portwatch list --proc code
 PROTO  ADDRESS    PORT   PID    PROCESS

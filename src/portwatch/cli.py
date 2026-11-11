@@ -11,22 +11,25 @@ from . import __version__
 from .collect import CollectError, collect
 from .filters import apply_filters, parse_ports
 from .models import PortEntry
+from .services import service_name
 from .snapshot import Diff, SnapshotError, diff_entries, load_snapshot, save_snapshot
 
 
-def format_table(entries: Sequence[PortEntry]) -> str:
-    rows = [("PROTO", "ADDRESS", "PORT", "PID", "PROCESS")]
+def format_table(entries: Sequence[PortEntry], services: bool = False) -> str:
+    header = ("PROTO", "ADDRESS", "PORT", "PID", "PROCESS")
+    rows = [header + ("SERVICE",) if services else header]
     for e in entries:
-        rows.append(
-            (
-                e.proto,
-                e.address,
-                str(e.port),
-                "-" if e.pid is None else str(e.pid),
-                e.process or "-",
-            )
+        row = (
+            e.proto,
+            e.address,
+            str(e.port),
+            "-" if e.pid is None else str(e.pid),
+            e.process or "-",
         )
-    widths = [max(len(r[i]) for r in rows) for i in range(5)]
+        if services:
+            row += (service_name(e.port, e.proto) or "-",)
+        rows.append(row)
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     lines = []
     for r in rows:
         lines.append("  ".join(c.ljust(widths[i]) for i, c in enumerate(r)).rstrip())
@@ -74,6 +77,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_list = sub.add_parser("list", help="list listening TCP and bound UDP ports")
     _filter_args(p_list)
+    p_list.add_argument(
+        "--services", action="store_true", help="add a SERVICE column / field with well-known names"
+    )
 
     p_snap = sub.add_parser("snapshot", help="save the current ports to FILE")
     p_snap.add_argument("file")
@@ -96,9 +102,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         current = apply_filters(collect(), args.port, args.proc, args.proto)
         if args.command == "list":
             if args.json:
-                print(json.dumps([e.to_dict() for e in current], indent=2))
+                items = [e.to_dict() for e in current]
+                if args.services:
+                    for item in items:
+                        item["service"] = service_name(item["port"], item["proto"])
+                print(json.dumps(items, indent=2))
             else:
-                print(format_table(current))
+                print(format_table(current, services=args.services))
         elif args.command == "snapshot":
             save_snapshot(args.file, current)
             msg = f"Saved {len(current)} ports to {args.file}"

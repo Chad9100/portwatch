@@ -26,6 +26,35 @@ def test_list_table(state, capsys):
     assert out[3].split()[-2:] == ["-", "-"]  # unknown pid / process
 
 
+def test_list_services_table(state, capsys):
+    assert cli.main(["list", "--services"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].split()[-1] == "SERVICE"
+    assert out[1].split()[-1] == "ssh"
+    assert out[2].split()[-1] == "http"
+    assert out[3].split()[-1] == "dns"  # udp 53
+
+
+def test_list_services_json_and_unknown(state, capsys):
+    state["entries"].append(PortEntry("tcp", "127.0.0.1", 48765, 1, "x"))
+    cli.main(["list", "--services", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert {d["port"]: d["service"] for d in data}[22] == "ssh"
+    assert data[-1]["service"] is None
+
+
+def test_list_without_services_unchanged(state, capsys):
+    cli.main(["list"])
+    assert "SERVICE" not in capsys.readouterr().out
+
+
+def test_service_name_udp_only():
+    from portwatch.services import service_name
+
+    assert service_name(67, "udp") == "dhcp"
+    assert service_name(67, "tcp") is None
+
+
 def test_list_json(state, capsys):
     assert cli.main(["list", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
