@@ -31,15 +31,15 @@ On Windows the parser expects English `netstat` output (the `LISTENING` state te
 
 ## Example (real output)
 
-The block below was captured by running the commands on a Windows 11 PC, not edited by hand.
+The block below was captured by running the commands on a Windows 11 PC. The only edit is that two private network addresses in the first table were replaced with the documentation addresses 192.0.2.10 and 192.0.2.11.
 
 ```
 $ portwatch list --proto tcp --port 1-1024
 PROTO  ADDRESS          PORT  PID   PROCESS
 tcp    0.0.0.0          135   1632  svchost.exe
 tcp    ::               135   1632  svchost.exe
-tcp    192.168.135.105  139   4     System
-tcp    26.92.186.48     139   4     System
+tcp    192.0.2.10       139   4     System
+tcp    192.0.2.11       139   4     System
 tcp    0.0.0.0          445   4     System
 tcp    ::               445   4     System
 
