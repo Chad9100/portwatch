@@ -15,7 +15,37 @@ from .collect import CollectError, collect
 from .filters import apply_filters, parse_ports
 from .models import PortEntry
 from .services import service_name
-from .snapshot import Diff, SnapshotError, diff_entries, load_snapshot, save_snapshot
+from .snapshot import (
+    Diff,
+    SnapshotError,
+    append_snapshot,
+    diff_entries,
+    history_changes,
+    load_history,
+    load_snapshot,
+    save_snapshot,
+)
+
+
+def format_log(changes, count: int) -> str:
+    """Render per-snapshot changes; `changes` is [(created, Diff)]."""
+    lines = []
+    for created, diff in changes:
+        if diff.empty:
+            lines.append(f"{created}  no changes")
+            continue
+        lines.append(f"{created}")
+        for e in diff.opened:
+            lines.append(f"  + opened  {_describe(e)}")
+        for e in diff.closed:
+            lines.append(f"  - closed  {_describe(e)}")
+        for a, b in diff.changed:
+            lines.append(
+                f"  ~ owner   {a.proto} {_addr(a)}  {a.process or '?'} (pid {a.pid})"
+                f" -> {b.process or '?'} (pid {b.pid})"
+            )
+    lines.append(f"{count} snapshots, {len(changes)} intervals")
+    return "\n".join(lines)
 
 
 def format_table(entries: Sequence[PortEntry], services: bool = False) -> str:
@@ -116,7 +146,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_snap = sub.add_parser("snapshot", help="save the current ports to FILE")
     p_snap.add_argument("file")
+    p_snap.add_argument(
+        "--append",
+        action="store_true",
+        help="append to FILE as a history (one snapshot per line) for 'portwatch log'",
+    )
     _filter_args(p_snap)
+
+    p_log = sub.add_parser("log", help="show what changed between the snapshots in a history file")
+    p_log.add_argument("file", help="history file written by 'snapshot --append'")
+    _filter_args(p_log)
 
     p_diff = sub.add_parser("diff", help="show ports opened/closed since a snapshot")
     p_diff.add_argument("file")
@@ -138,6 +177,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     try:
+        if args.command == "log":
+            history = [
+                (created, apply_filters(entries, args.port, args.proc, args.proto))
+                for created, entries in load_history(args.file)
+            ]
+            changes = history_changes(history)
+            if args.json:
+                print(json.dumps(
+                    [{"created": c, **d.to_dict()} for c, d in changes], indent=2))
+            else:
+                print(format_log(changes, len(history)))
+            return 0
         current = apply_filters(collect(), args.port, args.proc, args.proto)
         if args.command == "list":
             if args.csv and args.json:
@@ -155,8 +206,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 print(format_table(current, services=args.services))
         elif args.command == "snapshot":
-            save_snapshot(args.file, current)
-            msg = f"Saved {len(current)} ports to {args.file}"
+            if args.append:
+                total = append_snapshot(args.file, current)
+                msg = f"Appended {len(current)} ports to {args.file} ({total} snapshots)"
+            else:
+                save_snapshot(args.file, current)
+                msg = f"Saved {len(current)} ports to {args.file}"
             if args.json:
                 print(json.dumps({"saved": len(current), "file": args.file}))
             else:

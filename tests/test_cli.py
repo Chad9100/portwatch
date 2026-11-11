@@ -111,6 +111,57 @@ def test_snapshot_respects_filters(state, tmp_path):
     assert len(json.loads(f.read_text())["entries"]) == 2
 
 
+def test_append_and_log(state, tmp_path, capsys):
+    f = tmp_path / "hist.jsonl"
+    assert cli.main(["snapshot", str(f), "--append"]) == 0
+    assert "Appended 3 ports" in capsys.readouterr().out
+    state["entries"] = [A, C, PortEntry("tcp", "127.0.0.1", 9000, 5, "py")]
+    cli.main(["snapshot", str(f), "--append"])
+    assert "(2 snapshots)" in capsys.readouterr().out
+    state["entries"] = [A, C, PortEntry("tcp", "127.0.0.1", 9000, 5, "py")]
+    cli.main(["snapshot", str(f), "--append"])
+    capsys.readouterr()
+    assert len(f.read_text().splitlines()) == 3
+    assert cli.main(["log", str(f)]) == 0
+    out = capsys.readouterr().out
+    assert "+ opened  tcp 127.0.0.1:9000" in out
+    assert "- closed  tcp 0.0.0.0:80" in out
+    assert "no changes" in out
+    assert out.splitlines()[-1] == "3 snapshots, 2 intervals"
+
+
+def test_log_json_and_filter(state, tmp_path, capsys):
+    f = tmp_path / "hist.jsonl"
+    cli.main(["snapshot", str(f), "--append"])
+    state["entries"] = [A]
+    cli.main(["snapshot", str(f), "--append"])
+    capsys.readouterr()
+    assert cli.main(["log", str(f), "--json", "--port", "80"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert len(data) == 1 and data[0]["closed"][0]["port"] == 80
+    assert data[0]["created"].endswith("Z")
+    cli.main(["log", str(f), "--port", "22"])
+    assert "no changes" in capsys.readouterr().out
+
+
+def test_log_errors(state, tmp_path, capsys):
+    assert cli.main(["log", str(tmp_path / "missing")]) == 2
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("not json\n")
+    assert cli.main(["log", str(bad)]) == 2
+    assert "line 1" in capsys.readouterr().err
+    assert cli.main(["snapshot", str(bad), "--append"]) == 2
+    assert bad.read_text() == "not json\n"  # refused, not extended
+
+
+def test_log_single_snapshot(state, tmp_path, capsys):
+    f = tmp_path / "hist.jsonl"
+    cli.main(["snapshot", str(f), "--append"])
+    capsys.readouterr()
+    cli.main(["log", str(f)])
+    assert capsys.readouterr().out.strip() == "1 snapshots, 0 intervals"
+
+
 def test_diff_no_changes(state, tmp_path, capsys):
     f = tmp_path / "snap.json"
     cli.main(["snapshot", str(f)])

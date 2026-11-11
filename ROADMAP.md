@@ -10,4 +10,6 @@ Ideas for after v0.1, roughly in priority order.
 6. Process details: full executable path and command line, owner user.
 7. ~~Well-known service names for common ports~~ done: `list --services`.
 8. ~~CSV output and `--sort` option~~ done: `list --csv`, `list --sort`.
-9. `snapshot --append` history and a `log` command to show changes over time.
+9. ~~`snapshot --append` history and a `log` command to show changes over time.~~ done: `snapshot --append`, `log`.
+10. `watch --history FILE`: append to the history on every poll.
+11. `log --since DATE` to limit history output.

@@ -18,10 +18,13 @@ Requires Python 3.10+. This installs a `portwatch` command (also `python -m port
 portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json | --csv] [--services]
                    [--sort port|proto|address|pid|process]
 portwatch snapshot FILE [filters]
+portwatch snapshot FILE --append [filters]
+portwatch log      FILE [filters] [--json]
 portwatch diff     FILE [filters] [--json]
 portwatch check    ALLOWFILE [filters] [--json]
 ```
 
+- `snapshot --append` adds the current ports to FILE as one JSON line instead of overwriting it, building a history (it refuses to extend a file that is not a valid history). `log FILE` then prints what opened, closed or changed owner between each pair of consecutive snapshots, with UTC timestamps; filters apply to the stored snapshots, and nothing is collected live.
 - `check` lists sockets that match no rule in the allow-list file and exits 1 if there are any (0 if all are expected), for CI/cron use. One rule per line, `#` starts a comment: `22` (any protocol), `tcp/80,443`, `udp/5000-5100`, and an optional process-name substring after the ports (`tcp/3000 node`). A bad rule is an error with its line number (exit 2).
 
 - `--port` takes a port, a list or ranges: `80`, `80,443`, `8000-8100,22`.
@@ -102,6 +105,18 @@ Saved 137 ports to before.json
 $ portwatch diff before.json   # after starting a python listener on 48765
 + opened  tcp 127.0.0.1:48765  python.exe (pid 23632)
 1 opened, 0 closed, 0 changed owner
+
+$ portwatch snapshot hist.jsonl --append --proto tcp --port 40000-50000   # three times, with a python listener on 48765 open only during the second
+Appended 19 ports to hist.jsonl (1 snapshots)
+Appended 20 ports to hist.jsonl (2 snapshots)
+Appended 19 ports to hist.jsonl (3 snapshots)
+
+$ portwatch log hist.jsonl
+2026-11-12T00:07:56Z
+  + opened  tcp 127.0.0.1:48765  python.exe (pid 19616)
+2026-11-12T00:07:57Z
+  - closed  tcp 127.0.0.1:48765  python.exe (pid 19616)
+3 snapshots, 2 intervals
 
 $ portwatch list --port 48765 --json
 [

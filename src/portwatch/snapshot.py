@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Sequence, Tuple
@@ -25,6 +26,49 @@ def save_snapshot(path: str, entries: Sequence[PortEntry]) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2)
         fh.write("\n")
+
+
+def append_snapshot(path: str, entries: Sequence[PortEntry]) -> int:
+    """Append one snapshot as a JSON line to a history file; returns the record count."""
+    record = {
+        "version": FORMAT_VERSION,
+        "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "entries": [e.to_dict() for e in sort_entries(entries)],
+    }
+    # Refuse to extend a file that is not a readable history.
+    count = len(load_history(path)) if os.path.exists(path) else 0
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+    return count + 1
+
+
+def load_history(path: str) -> List[Tuple[str, List[PortEntry]]]:
+    """Read a history file (one snapshot per line) as (created, entries) pairs."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError as exc:
+        raise SnapshotError(f"cannot read history {path}: {exc.strerror}") from exc
+    history: List[Tuple[str, List[PortEntry]]] = []
+    for n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            doc = json.loads(line)
+            if not isinstance(doc, dict) or doc.get("version") != FORMAT_VERSION:
+                raise ValueError("not a portwatch snapshot record")
+            history.append((str(doc["created"]), [PortEntry.from_dict(d) for d in doc["entries"]]))
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SnapshotError(f"{path} line {n} is not a valid history record: {exc}") from exc
+    return history
+
+
+def history_changes(history: Sequence[Tuple[str, Sequence[PortEntry]]]):
+    """Diff each snapshot against the one before it: [(created, Diff)] for records 2..N."""
+    return [
+        (history[i][0], diff_entries(history[i - 1][1], history[i][1]))
+        for i in range(1, len(history))
+    ]
 
 
 def load_snapshot(path: str) -> List[PortEntry]:
