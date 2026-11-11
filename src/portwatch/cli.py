@@ -10,6 +10,7 @@ import sys
 from typing import List, Optional, Sequence
 
 from . import __version__
+from .allowlist import AllowlistError, load_allowlist, unexpected
 from .collect import CollectError, collect
 from .filters import apply_filters, parse_ports
 from .models import PortEntry
@@ -120,6 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_diff = sub.add_parser("diff", help="show ports opened/closed since a snapshot")
     p_diff.add_argument("file")
     _filter_args(p_diff)
+
+    p_check = sub.add_parser(
+        "check", help="report ports not in an allow-list file (exit 1 if any)"
+    )
+    p_check.add_argument("file", help="allow-list file, one rule per line, e.g. tcp/22")
+    _filter_args(p_check)
     return parser
 
 
@@ -154,11 +161,21 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(json.dumps({"saved": len(current), "file": args.file}))
             else:
                 print(msg)
+        elif args.command == "check":
+            bad = unexpected(current, load_allowlist(args.file))
+            if args.json:
+                print(json.dumps([e.to_dict() for e in bad], indent=2))
+            elif bad:
+                print(format_table(bad))
+                print(f"{len(bad)} unexpected of {len(current)} ports")
+            else:
+                print(f"All {len(current)} ports are in the allow-list.")
+            return 1 if bad else 0
         else:
             old = apply_filters(load_snapshot(args.file), args.port, args.proc, args.proto)
             diff = diff_entries(old, current)
             print(json.dumps(diff.to_dict(), indent=2) if args.json else format_diff(diff))
-    except (CollectError, SnapshotError, OSError) as exc:
+    except (CollectError, SnapshotError, AllowlistError, OSError) as exc:
         print(f"portwatch: error: {exc}", file=sys.stderr)
         return 2
     return 0

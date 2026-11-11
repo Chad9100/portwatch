@@ -19,7 +19,10 @@ portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json | --csv
                    [--sort port|proto|address|pid|process]
 portwatch snapshot FILE [filters]
 portwatch diff     FILE [filters] [--json]
+portwatch check    ALLOWFILE [filters] [--json]
 ```
+
+- `check` lists sockets that match no rule in the allow-list file and exits 1 if there are any (0 if all are expected), for CI/cron use. One rule per line, `#` starts a comment: `22` (any protocol), `tcp/80,443`, `udp/5000-5100`, and an optional process-name substring after the ports (`tcp/3000 node`). A bad rule is an error with its line number (exit 2).
 
 - `--port` takes a port, a list or ranges: `80`, `80,443`, `8000-8100,22`.
 - `--proc` is a case-insensitive substring of the process name.
@@ -28,14 +31,14 @@ portwatch diff     FILE [filters] [--json]
 - `--sort` (list only) orders by one column; the default is port. Process names sort case-insensitively, and unknown pids/processes come last.
 - TCP rows are listening sockets; UDP rows are bound sockets (UDP has no listen state).
 - `diff` reports ports opened, closed, or whose owning process changed since the snapshot.
-- Exit code is 0 on success and 2 on errors (bad snapshot, missing system tools).
+- Exit code is 0 on success and 2 on errors (bad snapshot or allow-list, missing system tools); `check` also exits 1 when unexpected ports are found.
 
 On Linux, process names for sockets owned by other users need root (`sudo portwatch list`).
 On Windows the parser expects English `netstat` output (the `LISTENING` state text).
 
 ## Example (real output)
 
-The block below was captured by running the commands on a Windows 11 PC. The only edit is that two private network addresses in the first two tables and the first CSV block were replaced with the documentation addresses 192.0.2.10 and 192.0.2.11.
+The block below was captured by running the commands on a Windows 11 PC. The only edit is that two private network addresses (a LAN and a VPN address) in the first two tables, the first CSV block and the `check` table were replaced with the documentation addresses 192.0.2.10 and 192.0.2.11 (column widths adjusted to match).
 
 ```
 $ portwatch list --proto tcp --port 1-1024
@@ -80,6 +83,18 @@ tcp,127.0.0.1,63460,5700,Code.exe
 tcp,127.0.0.1,23894,15456,Code.exe
 tcp,127.0.0.1,53890,19384,Code.exe
 tcp,127.0.0.1,31440,26068,Code.exe
+
+$ cat allow.txt
+# expected
+tcp/135 svchost
+445
+$ portwatch check allow.txt --proto tcp --port 1-1024
+PROTO  ADDRESS     PORT  PID  PROCESS
+tcp    192.0.2.10  139   4    System
+tcp    192.0.2.11  139   4    System
+2 unexpected of 6 ports
+$ echo $?
+1
 
 $ portwatch snapshot before.json
 Saved 137 ports to before.json
