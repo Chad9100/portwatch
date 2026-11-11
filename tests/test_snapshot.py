@@ -108,3 +108,27 @@ def test_diff_to_dict():
 def test_entry_from_dict_defaults():
     e = PortEntry.from_dict({"proto": "TCP", "address": "::", "port": "80"})
     assert e == PortEntry("tcp", "::", 80, None, None)
+
+
+def test_diff_shared_udp_port_with_many_owners_is_stable():
+    # Real case from Windows: UDP 5353 is bound by several processes at once.
+    owners = [PortEntry("udp", "0.0.0.0", 5353, pid, "x") for pid in (1, 2, 3)]
+    assert diff_entries(owners, list(reversed(owners))).empty
+
+
+def test_diff_extra_owner_on_shared_port_is_opened():
+    owners = [PortEntry("udp", "0.0.0.0", 5353, pid, "x") for pid in (1, 2)]
+    d = diff_entries(owners[:1], owners)
+    assert d.opened == [owners[1]] and not d.closed and not d.changed
+
+
+def test_diff_owner_with_unknown_pid():
+    a = PortEntry("tcp", "::1", 631)
+    b = PortEntry("tcp", "::1", 631, 5, "cupsd")
+    assert diff_entries([a], [b]).changed == [(a, b)]
+
+
+def test_sort_entries_drops_exact_duplicates():
+    from portwatch.models import sort_entries
+
+    assert sort_entries([A, A, B]) == [A, B]

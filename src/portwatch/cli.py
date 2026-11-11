@@ -33,10 +33,15 @@ def format_table(entries: Sequence[PortEntry]) -> str:
     return "\n".join(lines)
 
 
+def _addr(e: PortEntry) -> str:
+    host = f"[{e.address}]" if ":" in e.address else e.address
+    return f"{host}:{e.port}"
+
+
 def _describe(e: PortEntry) -> str:
     who = e.process or "?"
     pid = "-" if e.pid is None else e.pid
-    return f"{e.proto} {e.address}:{e.port}  {who} (pid {pid})"
+    return f"{e.proto} {_addr(e)}  {who} (pid {pid})"
 
 
 def format_diff(diff: Diff) -> str:
@@ -48,7 +53,7 @@ def format_diff(diff: Diff) -> str:
     for e in diff.closed:
         lines.append(f"- closed  {_describe(e)}")
     for a, b in diff.changed:
-        lines.append(f"~ owner   {a.proto} {a.address}:{a.port}  {a.process or '?'} (pid {a.pid}) -> {b.process or '?'} (pid {b.pid})")
+        lines.append(f"~ owner   {a.proto} {_addr(a)}  {a.process or '?'} (pid {a.pid}) -> {b.process or '?'} (pid {b.pid})")
     lines.append(f"{len(diff.opened)} opened, {len(diff.closed)} closed, {len(diff.changed)} changed owner")
     return "\n".join(lines)
 

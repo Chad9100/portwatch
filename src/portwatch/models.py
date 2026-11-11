@@ -37,4 +37,6 @@ class PortEntry:
 
 
 def sort_entries(entries):
-    return sorted(entries, key=lambda e: (e.port, e.proto, e.address))
+    """Sort by port and drop exact duplicate rows (same socket, same owner)."""
+    unique = dict.fromkeys(entries)
+    return sorted(unique, key=lambda e: (e.port, e.proto, e.address, e.pid or 0))

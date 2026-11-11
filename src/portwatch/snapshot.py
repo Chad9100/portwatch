@@ -62,14 +62,37 @@ class Diff:
         }
 
 
+def _group(entries: Sequence[PortEntry]) -> Dict[Tuple[str, str, int], Dict[object, PortEntry]]:
+    groups: Dict[Tuple[str, str, int], Dict[object, PortEntry]] = {}
+    for e in entries:
+        groups.setdefault(e.key, {})[e.pid] = e
+    return groups
+
+
+def _pid_order(pid):
+    return (pid is None, pid or 0)
+
+
 def diff_entries(old: Sequence[PortEntry], new: Sequence[PortEntry]) -> Diff:
-    old_map = {e.key: e for e in old}
-    new_map = {e.key: e for e in new}
+    """Compare two listings.
+
+    A socket address can have several owners at once (UDP 5353 with
+    SO_REUSEADDR), so owners are compared per (proto, address, port). When
+    one owner left and another arrived on the same address, that is
+    reported as an owner change rather than a close plus an open.
+    """
+    old_g, new_g = _group(old), _group(new)
     diff = Diff()
-    diff.opened = sort_entries(new_map[k] for k in new_map.keys() - old_map.keys())
-    diff.closed = sort_entries(old_map[k] for k in old_map.keys() - new_map.keys())
-    for k in sorted(old_map.keys() & new_map.keys(), key=lambda k: (k[2], k[0], k[1])):
-        a, b = old_map[k], new_map[k]
-        if a.pid != b.pid:
-            diff.changed.append((a, b))
+    for key in set(old_g) | set(new_g):
+        o, n = old_g.get(key, {}), new_g.get(key, {})
+        gone = sorted(o.keys() - n.keys(), key=_pid_order)
+        added = sorted(n.keys() - o.keys(), key=_pid_order)
+        paired = min(len(gone), len(added))
+        for g, a in zip(gone[:paired], added[:paired]):
+            diff.changed.append((o[g], n[a]))
+        diff.closed.extend(o[p] for p in gone[paired:])
+        diff.opened.extend(n[p] for p in added[paired:])
+    diff.opened = sort_entries(diff.opened)
+    diff.closed = sort_entries(diff.closed)
+    diff.changed.sort(key=lambda ab: (ab[0].port, ab[0].proto, ab[0].address))
     return diff

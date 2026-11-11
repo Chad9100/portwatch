@@ -148,3 +148,12 @@ def test_version(capsys):
         cli.main(["--version"])
     assert exc.value.code == 0
     assert "portwatch 0.1.0" in capsys.readouterr().out
+
+
+def test_diff_brackets_ipv6_addresses(state, tmp_path, capsys):
+    f = tmp_path / "snap.json"
+    cli.main(["snapshot", str(f)])
+    capsys.readouterr()
+    state["entries"] = [A, B, C, PortEntry("tcp", "::", 9000, 1, "srv")]
+    cli.main(["diff", str(f)])
+    assert "+ opened  tcp [::]:9000  srv (pid 1)" in capsys.readouterr().out
