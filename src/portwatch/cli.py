@@ -23,6 +23,7 @@ from .snapshot import (
     history_changes,
     load_history,
     load_snapshot,
+    parse_since,
     save_snapshot,
 )
 
@@ -44,8 +45,16 @@ def format_log(changes, count: int) -> str:
                 f"  ~ owner   {a.proto} {_addr(a)}  {a.process or '?'} (pid {a.pid})"
                 f" -> {b.process or '?'} (pid {b.pid})"
             )
-    lines.append(f"{count} snapshots, {len(changes)} intervals")
+    n = len(changes)
+    lines.append(
+        f"{count} {'snapshot' if count == 1 else 'snapshots'}, "
+        f"{n} {'interval' if n == 1 else 'intervals'}"
+    )
     return "\n".join(lines)
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
 
 def format_table(entries: Sequence[PortEntry], services: bool = False) -> str:
@@ -155,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_log = sub.add_parser("log", help="show what changed between the snapshots in a history file")
     p_log.add_argument("file", help="history file written by 'snapshot --append'")
+    p_log.add_argument(
+        "--since",
+        metavar="DATE",
+        help="only intervals ending at or after this UTC date/time, "
+        "e.g. 2026-11-12 or 2026-11-12T08:30",
+    )
     _filter_args(p_log)
 
     p_diff = sub.add_parser("diff", help="show ports opened/closed since a snapshot")
@@ -176,13 +191,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         parse_ports(args.port)
     except ValueError as exc:
         parser.error(str(exc))
+    since = ""
+    if args.command == "log" and args.since:
+        try:
+            since = parse_since(args.since)
+        except ValueError as exc:
+            parser.error(str(exc))
     try:
         if args.command == "log":
             history = [
                 (created, apply_filters(entries, args.port, args.proc, args.proto))
                 for created, entries in load_history(args.file)
             ]
-            changes = history_changes(history)
+            changes = history_changes(history, since)
             if args.json:
                 print(json.dumps(
                     [{"created": c, **d.to_dict()} for c, d in changes], indent=2))
@@ -208,7 +229,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.command == "snapshot":
             if args.append:
                 total = append_snapshot(args.file, current)
-                msg = f"Appended {len(current)} ports to {args.file} ({total} snapshots)"
+                msg = f"Appended {len(current)} ports to {args.file} ({_plural(total, 'snapshot')})"
             else:
                 save_snapshot(args.file, current)
                 msg = f"Saved {len(current)} ports to {args.file}"

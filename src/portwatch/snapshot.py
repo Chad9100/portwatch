@@ -63,11 +63,33 @@ def load_history(path: str) -> List[Tuple[str, List[PortEntry]]]:
     return history
 
 
-def history_changes(history: Sequence[Tuple[str, Sequence[PortEntry]]]):
-    """Diff each snapshot against the one before it: [(created, Diff)] for records 2..N."""
+def parse_since(text: str) -> str:
+    """Normalise a UTC date or date-time to the stored 'YYYY-MM-DDTHH:MM:SSZ' form.
+
+    Accepts YYYY-MM-DD (midnight), YYYY-MM-DDTHH:MM and YYYY-MM-DDTHH:MM:SS,
+    each with an optional trailing Z. Everything is UTC.
+    """
+    raw = text.strip()
+    if raw.endswith(("Z", "z")):
+        raw = raw[:-1]
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            continue
+    raise ValueError(f"invalid date {text!r}; use YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS] (UTC)")
+
+
+def history_changes(history: Sequence[Tuple[str, Sequence[PortEntry]]], since: str = ""):
+    """Diff each snapshot against the one before it: [(created, Diff)] for records 2..N.
+
+    With `since` (a normalised timestamp), only intervals that end at or after
+    it are kept; each is still diffed against the snapshot just before it.
+    """
     return [
         (history[i][0], diff_entries(history[i - 1][1], history[i][1]))
         for i in range(1, len(history))
+        if history[i][0] >= since
     ]
 
 

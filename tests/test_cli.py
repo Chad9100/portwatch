@@ -159,7 +159,62 @@ def test_log_single_snapshot(state, tmp_path, capsys):
     cli.main(["snapshot", str(f), "--append"])
     capsys.readouterr()
     cli.main(["log", str(f)])
-    assert capsys.readouterr().out.strip() == "1 snapshots, 0 intervals"
+    assert capsys.readouterr().out.strip() == "1 snapshot, 0 intervals"
+
+
+def test_append_first_snapshot_singular(state, tmp_path, capsys):
+    f = tmp_path / "hist.jsonl"
+    cli.main(["snapshot", str(f), "--append"])
+    assert capsys.readouterr().out.strip().endswith("(1 snapshot)")
+
+
+def _write_history(path, stamps_entries):
+    lines = [
+        json.dumps({"version": 1, "created": c, "entries": [e.to_dict() for e in es]})
+        for c, es in stamps_entries
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_log_since(tmp_path, capsys):
+    f = tmp_path / "h.jsonl"
+    _write_history(f, [
+        ("2026-11-10T10:00:00Z", [A]),
+        ("2026-11-10T11:00:00Z", [A, B]),
+        ("2026-11-12T09:00:00Z", [A]),
+        ("2026-11-12T10:30:00Z", [A, C]),
+    ])
+    assert cli.main(["log", str(f), "--since", "2026-11-11"]) == 0
+    out = capsys.readouterr().out
+    assert "2026-11-10" not in out
+    assert "- closed  tcp 0.0.0.0:80" in out
+    assert "+ opened  udp 0.0.0.0:53" in out
+    assert out.splitlines()[-1] == "4 snapshots, 2 intervals"
+    # time-of-day boundary is inclusive
+    cli.main(["log", str(f), "--since", "2026-11-12T10:30:00Z", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert [d["created"] for d in data] == ["2026-11-12T10:30:00Z"]
+    cli.main(["log", str(f), "--since", "2026-11-12T10:31"])
+    assert capsys.readouterr().out.strip() == "4 snapshots, 0 intervals"
+
+
+def test_log_since_bad_date(tmp_path, capsys):
+    f = tmp_path / "h.jsonl"
+    _write_history(f, [("2026-11-10T10:00:00Z", [A])])
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["log", str(f), "--since", "yesterday"])
+    assert exc.value.code == 2
+    assert "invalid date" in capsys.readouterr().err
+
+
+def test_parse_since_forms():
+    from portwatch.snapshot import parse_since
+
+    assert parse_since("2026-11-12") == "2026-11-12T00:00:00Z"
+    assert parse_since("2026-11-12T08:30") == "2026-11-12T08:30:00Z"
+    assert parse_since("2026-11-12T08:30:05Z") == "2026-11-12T08:30:05Z"
+    with pytest.raises(ValueError):
+        parse_since("2026-13-01")
 
 
 def test_diff_no_changes(state, tmp_path, capsys):
