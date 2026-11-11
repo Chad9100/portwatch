@@ -186,3 +186,54 @@ def test_diff_brackets_ipv6_addresses(state, tmp_path, capsys):
     state["entries"] = [A, B, C, PortEntry("tcp", "::", 9000, 1, "srv")]
     cli.main(["diff", str(f)])
     assert "+ opened  tcp [::]:9000  srv (pid 1)" in capsys.readouterr().out
+
+
+def _ports(capsys):
+    out = capsys.readouterr().out.splitlines()[1:]
+    return [int(line.split()[2]) for line in out]
+
+
+def test_sort_by_pid_unknown_last(state, capsys):
+    assert cli.main(["list", "--sort", "pid"]) == 0
+    assert _ports(capsys) == [22, 80, 53]  # pids 100, 200, None
+
+
+def test_sort_by_process_case_insensitive_unknown_last(state, capsys):
+    state["entries"].append(PortEntry("tcp", "0.0.0.0", 9, 5, "Apache"))
+    cli.main(["list", "--sort", "process"])
+    assert _ports(capsys) == [9, 80, 22, 53]  # Apache, nginx, sshd, none
+
+
+def test_sort_by_proto(state, capsys):
+    cli.main(["list", "--sort", "proto"])
+    assert _ports(capsys) == [22, 80, 53]  # tcp, tcp, udp
+
+
+def test_csv_output(state, capsys):
+    assert cli.main(["list", "--csv"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "proto,address,port,pid,process",
+        "tcp,0.0.0.0,22,100,sshd",
+        "tcp,0.0.0.0,80,200,nginx",
+        "udp,0.0.0.0,53,,",
+    ]
+
+
+def test_csv_services_and_quoting(state, capsys):
+    state["entries"] = [PortEntry("tcp", "::1", 22, 1, "a,b")]
+    cli.main(["list", "--csv", "--services"])
+    assert capsys.readouterr().out.splitlines() == [
+        "proto,address,port,pid,process,service",
+        'tcp,::1,22,1,"a,b",ssh',
+    ]
+
+
+def test_csv_and_json_conflict(state):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["list", "--csv", "--json"])
+    assert exc.value.code == 2
+
+
+def test_sort_applies_to_json(state, capsys):
+    cli.main(["list", "--sort", "pid", "--json"])
+    assert [d["port"] for d in json.loads(capsys.readouterr().out)] == [22, 80, 53]

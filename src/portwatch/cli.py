@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import sys
 from typing import List, Optional, Sequence
@@ -34,6 +36,30 @@ def format_table(entries: Sequence[PortEntry], services: bool = False) -> str:
     for r in rows:
         lines.append("  ".join(c.ljust(widths[i]) for i, c in enumerate(r)).rstrip())
     return "\n".join(lines)
+
+
+SORT_KEYS = ["port", "proto", "address", "pid", "process"]
+
+
+def sort_by(entries: Sequence[PortEntry], key: str) -> List[PortEntry]:
+    """Stable sort by one column; ties keep the default (port, proto, ...) order."""
+    if key == "pid":
+        return sorted(entries, key=lambda e: (e.pid is None, e.pid or 0))
+    if key == "process":
+        return sorted(entries, key=lambda e: (not e.process, (e.process or "").lower()))
+    return sorted(entries, key=lambda e: getattr(e, key))
+
+
+def format_csv(entries: Sequence[PortEntry], services: bool = False) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["proto", "address", "port", "pid", "process"] + (["service"] if services else []))
+    for e in entries:
+        row = [e.proto, e.address, e.port, "" if e.pid is None else e.pid, e.process or ""]
+        if services:
+            row.append(service_name(e.port, e.proto) or "")
+        w.writerow(row)
+    return buf.getvalue().rstrip("\n")
 
 
 def _addr(e: PortEntry) -> str:
@@ -80,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument(
         "--services", action="store_true", help="add a SERVICE column / field with well-known names"
     )
+    p_list.add_argument("--csv", action="store_true", help="CSV output with a header row")
+    p_list.add_argument(
+        "--sort",
+        choices=SORT_KEYS,
+        help="sort by this column (default: port); unknown pid/process sort last",
+    )
 
     p_snap = sub.add_parser("snapshot", help="save the current ports to FILE")
     p_snap.add_argument("file")
@@ -101,7 +133,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         current = apply_filters(collect(), args.port, args.proc, args.proto)
         if args.command == "list":
-            if args.json:
+            if args.csv and args.json:
+                parser.error("--csv and --json cannot be combined")
+            if args.sort:
+                current = sort_by(current, args.sort)
+            if args.csv:
+                print(format_csv(current, services=args.services))
+            elif args.json:
                 items = [e.to_dict() for e in current]
                 if args.services:
                     for item in items:
