@@ -393,3 +393,41 @@ def test_csv_and_json_conflict(state):
 def test_sort_applies_to_json(state, capsys):
     cli.main(["list", "--sort", "pid", "--json"])
     assert [d["port"] for d in json.loads(capsys.readouterr().out)] == [22, 80, 53]
+
+
+def test_prune_keeps_newest(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert cli.main(["prune", str(f), "--keep", "3"]) == 0
+    assert capsys.readouterr().out.strip() == f"Removed 1 snapshot from {f}, kept 3"
+    cli.main(["log", str(f), "--json"])
+    assert [d["created"] for d in json.loads(capsys.readouterr().out)] == [
+        "2026-11-12T09:00:00Z", "2026-11-12T10:30:00Z"]
+    assert not (tmp_path / "h.jsonl.prune.tmp").exists()
+
+
+def test_prune_nothing_to_remove_leaves_file_alone(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    before = f.read_bytes()
+    assert cli.main(["prune", str(f), "--keep", "10", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["removed"] == 0
+    assert f.read_bytes() == before
+
+
+def test_prune_then_append_still_works(state, tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    cli.main(["prune", str(f), "--keep", "1"])
+    cli.main(["snapshot", str(f), "--append"])
+    assert capsys.readouterr().out.strip().endswith("(2 snapshots)")
+
+
+def test_prune_bad_keep_and_bad_file(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["prune", str(f), "--keep", "0"])
+    assert exc.value.code == 2
+    assert "--keep must be at least 1" in capsys.readouterr().err
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("not json\n", encoding="utf-8")
+    assert cli.main(["prune", str(bad), "--keep", "1"]) == 2
+    assert bad.read_text(encoding="utf-8") == "not json\n"
+    assert cli.main(["prune", str(tmp_path / "missing.jsonl"), "--keep", "1"]) == 2

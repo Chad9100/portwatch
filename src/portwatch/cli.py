@@ -24,6 +24,7 @@ from .snapshot import (
     load_history,
     load_snapshot,
     parse_since,
+    prune_history,
     save_snapshot,
 )
 
@@ -183,6 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _filter_args(p_log)
 
+    p_prune = sub.add_parser("prune", help="trim old snapshots from a history file")
+    p_prune.add_argument("file", help="history file written by 'snapshot --append'")
+    p_prune.add_argument(
+        "--keep", metavar="N", type=int, required=True, help="number of newest snapshots to keep"
+    )
+    p_prune.add_argument("--json", action="store_true", help="machine-readable output")
+
     p_diff = sub.add_parser("diff", help="show ports opened/closed since a snapshot")
     p_diff.add_argument("file")
     _filter_args(p_diff)
@@ -199,7 +207,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        parse_ports(args.port)
+        parse_ports(getattr(args, "port", None))
     except ValueError as exc:
         parser.error(str(exc))
     since = ""
@@ -216,7 +224,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             parser.error(str(exc))
     if args.command == "log" and args.last is not None and args.last < 1:
         parser.error("--last must be at least 1")
+    if args.command == "prune" and args.keep < 1:
+        parser.error("--keep must be at least 1")
     try:
+        if args.command == "prune":
+            removed, kept = prune_history(args.file, args.keep)
+            if args.json:
+                print(json.dumps({"removed": removed, "kept": kept, "file": args.file}))
+            else:
+                print(f"Removed {_plural(removed, 'snapshot')} from {args.file}, kept {kept}")
+            return 0
         if args.command == "log":
             history = [
                 (created, apply_filters(entries, args.port, args.proc, args.proto))

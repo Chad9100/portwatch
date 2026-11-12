@@ -63,6 +63,26 @@ def load_history(path: str) -> List[Tuple[str, List[PortEntry]]]:
     return history
 
 
+def prune_history(path: str, keep: int) -> Tuple[int, int]:
+    """Drop all but the newest `keep` snapshots from a history file.
+
+    Returns (removed, kept). The file is validated first, so a file that is not
+    a readable history is never touched. Surviving records are written back
+    byte-for-byte, via a temporary file that replaces the original.
+    """
+    load_history(path)
+    with open(path, encoding="utf-8") as fh:
+        records = [ln for ln in fh.read().splitlines() if ln.strip()]
+    kept = records[len(records) - keep:] if keep < len(records) else records
+    removed = len(records) - len(kept)
+    if removed:
+        tmp = path + ".prune.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("".join(ln + "\n" for ln in kept))
+        os.replace(tmp, path)
+    return removed, len(kept)
+
+
 def parse_since(text: str) -> str:
     """Normalise a UTC date or date-time to the stored 'YYYY-MM-DDTHH:MM:SSZ' form.
 
