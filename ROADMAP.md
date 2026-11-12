@@ -13,6 +13,6 @@ Ideas for after v0.1, roughly in priority order.
 9. ~~`snapshot --append` history and a `log` command to show changes over time.~~ done: `snapshot --append`, `log`.
 10. `watch --history FILE`: append to the history on every poll.
 11. ~~`log --since DATE` to limit history output.~~ done: `log --since`.
-12. `log --until DATE` and `log --last N` to bound the history from the other end.
+12. ~~`log --until DATE` and `log --last N` to bound the history from the other end.~~ done: `log --until`, `log --last`.
 13. `check --json` summary with a count, and `check --fail-on-missing` for allow-listed ports that are no longer open.
 14. `history prune FILE --keep N` to trim old snapshots from a history file.

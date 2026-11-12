@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .models import PortEntry, sort_entries
 
@@ -80,17 +80,26 @@ def parse_since(text: str) -> str:
     raise ValueError(f"invalid date {text!r}; use YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS] (UTC)")
 
 
-def history_changes(history: Sequence[Tuple[str, Sequence[PortEntry]]], since: str = ""):
+def history_changes(
+    history: Sequence[Tuple[str, Sequence[PortEntry]]],
+    since: str = "",
+    until: str = "",
+    last: Optional[int] = None,
+):
     """Diff each snapshot against the one before it: [(created, Diff)] for records 2..N.
 
-    With `since` (a normalised timestamp), only intervals that end at or after
-    it are kept; each is still diffed against the snapshot just before it.
+    With `since` / `until` (normalised timestamps), only intervals that end at
+    or after / at or before them are kept; each is still diffed against the
+    snapshot just before it. `last` then keeps only the final N of those.
     """
-    return [
+    out = [
         (history[i][0], diff_entries(history[i - 1][1], history[i][1]))
         for i in range(1, len(history))
-        if history[i][0] >= since
+        if history[i][0] >= since and (not until or history[i][0] <= until)
     ]
+    if last is not None:
+        out = out[len(out) - last:] if last > 0 else []
+    return out
 
 
 def load_snapshot(path: str) -> List[PortEntry]:

@@ -19,12 +19,12 @@ portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json | --csv
                    [--sort port|proto|address|pid|process]
 portwatch snapshot FILE [filters]
 portwatch snapshot FILE --append [filters]
-portwatch log      FILE [filters] [--since DATE] [--json]
+portwatch log      FILE [filters] [--since DATE] [--until DATE] [--last N] [--json]
 portwatch diff     FILE [filters] [--json]
 portwatch check    ALLOWFILE [filters] [--json]
 ```
 
-- `snapshot --append` adds the current ports to FILE as one JSON line instead of overwriting it, building a history (it refuses to extend a file that is not a valid history). `log FILE` then prints what opened, closed or changed owner between each pair of consecutive snapshots, with UTC timestamps; filters apply to the stored snapshots, and nothing is collected live. `--since DATE` keeps only intervals that end at or after a UTC date or time (`2026-11-12`, `2026-11-12T08:30`, `2026-11-12T08:30:05`, optional trailing `Z`); each kept interval is still compared with the snapshot just before it, and the last line still counts every snapshot in the file.
+- `snapshot --append` adds the current ports to FILE as one JSON line instead of overwriting it, building a history (it refuses to extend a file that is not a valid history). `log FILE` then prints what opened, closed or changed owner between each pair of consecutive snapshots, with UTC timestamps; filters apply to the stored snapshots, and nothing is collected live. `--since DATE` keeps only intervals that end at or after a UTC date or time (`2026-11-12`, `2026-11-12T08:30`, `2026-11-12T08:30:05`, optional trailing `Z`); each kept interval is still compared with the snapshot just before it, and the last line still counts every snapshot in the file. `--until DATE` is the mirror image (same date forms, a bare date means midnight, the boundary is inclusive), so `--since` and `--until` together select a window. `--last N` keeps only the final N intervals after those bounds (N must be at least 1).
 - `check` lists sockets that match no rule in the allow-list file and exits 1 if there are any (0 if all are expected), for CI/cron use. One rule per line, `#` starts a comment: `22` (any protocol), `tcp/80,443`, `udp/5000-5100`, and an optional process-name substring after the ports (`tcp/3000 node`). A bad rule is an error with its line number (exit 2).
 
 - `--port` takes a port, a list or ranges: `80`, `80,443`, `8000-8100,22`.
@@ -122,6 +122,22 @@ $ portwatch log hist.jsonl --since 2026-11-12T01:46:33   # from a separate ident
 2026-11-12T01:46:34Z
   - closed  tcp 127.0.0.1:48765  python.exe (pid 9704)
 3 snapshots, 1 interval
+
+$ portwatch log hist.jsonl --last 2   # from another identical run (python listener on 48765 open only during the first interval), 4 snapshots
+2026-11-12T03:07:17Z
+  - closed  tcp 127.0.0.1:48765  python.exe (pid 12984)
+2026-11-12T03:07:19Z  no changes
+4 snapshots, 2 intervals
+
+$ portwatch log hist.jsonl --until 2026-11-12T03:07:16
+2026-11-12T03:07:15Z
+  + opened  tcp 127.0.0.1:48765  python.exe (pid 12984)
+4 snapshots, 1 interval
+
+$ portwatch log hist.jsonl --since 2026-11-12T03:07:16 --until 2026-11-12T03:07:17
+2026-11-12T03:07:17Z
+  - closed  tcp 127.0.0.1:48765  python.exe (pid 12984)
+4 snapshots, 1 interval
 
 $ portwatch list --port 48765 --json
 [

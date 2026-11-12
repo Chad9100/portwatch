@@ -170,6 +170,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="only intervals ending at or after this UTC date/time, "
         "e.g. 2026-11-12 or 2026-11-12T08:30",
     )
+    p_log.add_argument(
+        "--until",
+        metavar="DATE",
+        help="only intervals ending at or before this UTC date/time (a bare date means midnight)",
+    )
+    p_log.add_argument(
+        "--last",
+        metavar="N",
+        type=int,
+        help="only the last N intervals (after --since/--until)",
+    )
     _filter_args(p_log)
 
     p_diff = sub.add_parser("diff", help="show ports opened/closed since a snapshot")
@@ -197,13 +208,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             since = parse_since(args.since)
         except ValueError as exc:
             parser.error(str(exc))
+    until = ""
+    if args.command == "log" and args.until:
+        try:
+            until = parse_since(args.until)
+        except ValueError as exc:
+            parser.error(str(exc))
+    if args.command == "log" and args.last is not None and args.last < 1:
+        parser.error("--last must be at least 1")
     try:
         if args.command == "log":
             history = [
                 (created, apply_filters(entries, args.port, args.proc, args.proto))
                 for created, entries in load_history(args.file)
             ]
-            changes = history_changes(history, since)
+            changes = history_changes(history, since, until, args.last)
             if args.json:
                 print(json.dumps(
                     [{"created": c, **d.to_dict()} for c, d in changes], indent=2))

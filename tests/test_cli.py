@@ -207,6 +207,56 @@ def test_log_since_bad_date(tmp_path, capsys):
     assert "invalid date" in capsys.readouterr().err
 
 
+def _four_snapshot_history(tmp_path):
+    f = tmp_path / "h.jsonl"
+    _write_history(f, [
+        ("2026-11-10T10:00:00Z", [A]),
+        ("2026-11-10T11:00:00Z", [A, B]),
+        ("2026-11-12T09:00:00Z", [A]),
+        ("2026-11-12T10:30:00Z", [A, C]),
+    ])
+    return f
+
+
+def _stamps(capsys, argv):
+    assert cli.main(argv + ["--json"]) == 0
+    return [d["created"] for d in json.loads(capsys.readouterr().out)]
+
+
+def test_log_until(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert _stamps(capsys, ["log", str(f), "--until", "2026-11-11"]) == ["2026-11-10T11:00:00Z"]
+    # inclusive boundary
+    assert len(_stamps(capsys, ["log", str(f), "--until", "2026-11-12T09:00:00Z"])) == 2
+    cli.main(["log", str(f), "--until", "2026-11-09"])
+    assert capsys.readouterr().out.strip() == "4 snapshots, 0 intervals"
+
+
+def test_log_since_and_until_window(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    got = _stamps(capsys, ["log", str(f), "--since", "2026-11-12", "--until", "2026-11-12T09:30"])
+    assert got == ["2026-11-12T09:00:00Z"]
+
+
+def test_log_last(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert _stamps(capsys, ["log", str(f), "--last", "1"]) == ["2026-11-12T10:30:00Z"]
+    assert len(_stamps(capsys, ["log", str(f), "--last", "10"])) == 3
+    # --last applies after --until
+    assert _stamps(capsys, ["log", str(f), "--until", "2026-11-12T09:00", "--last", "1"]) == [
+        "2026-11-12T09:00:00Z"
+    ]
+
+
+def test_log_last_and_until_errors(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    for argv, msg in ((["--last", "0"], "--last"), (["--until", "soon"], "invalid date")):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["log", str(f)] + argv)
+        assert exc.value.code == 2
+        assert msg in capsys.readouterr().err
+
+
 def test_parse_since_forms():
     from portwatch.snapshot import parse_since
 
