@@ -54,6 +54,41 @@ def format_log(changes, count: int) -> str:
     return "\n".join(lines)
 
 
+def summarize_changes(changes) -> List[dict]:
+    """Count opened/closed/changed-owner events per (proto, port), sorted by port."""
+    counts: dict = {}
+
+    def bump(proto: str, port: int, field: str) -> None:
+        row = counts.setdefault(
+            (port, proto), {"proto": proto, "port": port, "opened": 0, "closed": 0, "changed": 0}
+        )
+        row[field] += 1
+
+    for _created, diff in changes:
+        for e in diff.opened:
+            bump(e.proto, e.port, "opened")
+        for e in diff.closed:
+            bump(e.proto, e.port, "closed")
+        for a, _b in diff.changed:
+            bump(a.proto, a.port, "changed")
+    return [counts[k] for k in sorted(counts)]
+
+
+def format_summary(rows: Sequence[dict], count: int, intervals: int) -> str:
+    table = [("PROTO", "PORT", "OPENED", "CLOSED", "CHANGED")]
+    for r in rows:
+        table.append((r["proto"], str(r["port"]), str(r["opened"]), str(r["closed"]), str(r["changed"])))
+    lines = []
+    if rows:
+        widths = [max(len(t[i]) for t in table) for i in range(5)]
+        for t in table:
+            lines.append("  ".join(c.ljust(widths[i]) for i, c in enumerate(t)).rstrip())
+    else:
+        lines.append("no changes")
+    lines.append(f"{_plural(count, 'snapshot')}, {_plural(intervals, 'interval')}")
+    return "\n".join(lines)
+
+
 def _plural(n: int, word: str) -> str:
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
@@ -182,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="only the last N intervals (after --since/--until)",
     )
+    p_log.add_argument(
+        "--summary",
+        action="store_true",
+        help="print only per-port opened/closed/changed counts over the selected intervals",
+    )
     _filter_args(p_log)
 
     p_prune = sub.add_parser("prune", help="trim old snapshots from a history file")
@@ -240,7 +280,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 for created, entries in load_history(args.file)
             ]
             changes = history_changes(history, since, until, args.last)
-            if args.json:
+            if args.summary:
+                rows = summarize_changes(changes)
+                if args.json:
+                    print(json.dumps(rows, indent=2))
+                else:
+                    print(format_summary(rows, len(history), len(changes)))
+            elif args.json:
                 print(json.dumps(
                     [{"created": c, **d.to_dict()} for c, d in changes], indent=2))
             else:

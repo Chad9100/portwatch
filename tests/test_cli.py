@@ -257,6 +257,43 @@ def test_log_last_and_until_errors(tmp_path, capsys):
         assert msg in capsys.readouterr().err
 
 
+def test_log_summary(tmp_path, capsys):
+    f = tmp_path / "h.jsonl"
+    A2 = PortEntry("tcp", "0.0.0.0", 22, 101, "sshd")
+    _write_history(f, [
+        ("2026-11-10T10:00:00Z", [A]),
+        ("2026-11-10T11:00:00Z", [A, B]),
+        ("2026-11-12T09:00:00Z", [A]),
+        ("2026-11-12T10:00:00Z", [A, B]),
+        ("2026-11-12T11:00:00Z", [A2, B, C]),
+    ])
+    assert cli.main(["log", str(f), "--summary"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [l.split() for l in lines] == [
+        ["PROTO", "PORT", "OPENED", "CLOSED", "CHANGED"],
+        ["tcp", "22", "0", "0", "1"],
+        ["udp", "53", "1", "0", "0"],
+        ["tcp", "80", "2", "1", "0"],
+        ["5", "snapshots,", "4", "intervals"],
+    ]
+    assert cli.main(["log", str(f), "--summary", "--since", "2026-11-12", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert {(d["proto"], d["port"]): (d["opened"], d["closed"], d["changed"]) for d in data} == {
+        ("tcp", 22): (0, 0, 1),
+        ("udp", 53): (1, 0, 0),
+        ("tcp", 80): (1, 1, 0),
+    }
+    assert cli.main(["log", str(f), "--summary", "--proto", "udp"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [l.split() for l in lines[1:]] == [["udp", "53", "1", "0", "0"], ["5", "snapshots,", "4", "intervals"]]
+
+
+def test_log_summary_empty(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert cli.main(["log", str(f), "--summary", "--until", "2026-11-09"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["no changes", "4 snapshots, 0 intervals"]
+
+
 def test_parse_since_forms():
     from portwatch.snapshot import parse_since
 
