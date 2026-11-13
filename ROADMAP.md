@@ -16,5 +16,5 @@ Ideas for after v0.1, roughly in priority order.
 12. ~~`log --until DATE` and `log --last N` to bound the history from the other end.~~ done: `log --until`, `log --last`.
 13. `check --json` summary with a count, and `check --fail-on-missing` for allow-listed ports that are no longer open.
 14. ~~`history prune FILE --keep N` to trim old snapshots from a history file.~~ done: `prune FILE --keep N`.
-15. `prune --older-than DATE` to drop snapshots by age instead of count.
+15. ~~`prune --older-than DATE` to drop snapshots by age instead of count.~~ done: `prune --older-than`.
 16. ~~`log --summary` to print only per-port open/close counts over the selected window.~~ done: `log --summary`.

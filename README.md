@@ -20,13 +20,13 @@ portwatch list     [--port SPEC] [--proc NAME] [--proto tcp|udp] [--json | --csv
 portwatch snapshot FILE [filters]
 portwatch snapshot FILE --append [filters]
 portwatch log      FILE [filters] [--since DATE] [--until DATE] [--last N] [--summary] [--json]
-portwatch prune    FILE --keep N [--json]
+portwatch prune    FILE [--keep N] [--older-than DATE] [--json]
 portwatch diff     FILE [filters] [--json]
 portwatch check    ALLOWFILE [filters] [--json]
 ```
 
 - `snapshot --append` adds the current ports to FILE as one JSON line instead of overwriting it, building a history (it refuses to extend a file that is not a valid history). `log FILE` then prints what opened, closed or changed owner between each pair of consecutive snapshots, with UTC timestamps; filters apply to the stored snapshots, and nothing is collected live. `--since DATE` keeps only intervals that end at or after a UTC date or time (`2026-11-12`, `2026-11-12T08:30`, `2026-11-12T08:30:05`, optional trailing `Z`); each kept interval is still compared with the snapshot just before it, and the last line still counts every snapshot in the file. `--until DATE` is the mirror image (same date forms, a bare date means midnight, the boundary is inclusive), so `--since` and `--until` together select a window. `--last N` keeps only the final N intervals after those bounds (N must be at least 1). `--summary` replaces the per-interval listing with one row per proto/port giving how many times it opened, closed or changed owner over the selected intervals (with `--json`, a list of objects with those counts); the last line is the same snapshot/interval count.
-- `prune FILE --keep N` rewrites a history file so only the newest N snapshots remain (N at least 1) and prints how many were removed. The file is validated first (a file that is not a history is left untouched, exit 2), kept lines are written back unchanged, and nothing is rewritten when there is nothing to remove.
+- `prune FILE --keep N` rewrites a history file so only the newest N snapshots remain (N at least 1) and prints how many were removed. The file is validated first (a file that is not a history is left untouched, exit 2), kept lines are written back unchanged, and nothing is rewritten when there is nothing to remove. `--older-than DATE` instead (or as well) drops snapshots created before a UTC date or time (same forms as `--since`; a bare date means midnight, a snapshot exactly at DATE is kept). With both options a snapshot must pass both tests to survive; at least one is required (exit 2 otherwise). Unlike `--keep`, `--older-than` may remove every snapshot, leaving an empty file that `snapshot --append` can still extend.
 - `check` lists sockets that match no rule in the allow-list file and exits 1 if there are any (0 if all are expected), for CI/cron use. One rule per line, `#` starts a comment: `22` (any protocol), `tcp/80,443`, `udp/5000-5100`, and an optional process-name substring after the ports (`tcp/3000 node`). A bad rule is an error with its line number (exit 2).
 
 - `--port` takes a port, a list or ranges: `80`, `80,443`, `8000-8100,22`.
@@ -152,6 +152,13 @@ $ portwatch log hist.jsonl | tail -1
 2 snapshots, 1 interval
 $ portwatch prune hist.jsonl --keep 5
 Removed 0 snapshots from hist.jsonl, kept 2
+
+$ portwatch prune hist.jsonl --older-than 2026-11-11T12:00   # on a synthetic 4-snapshot history dated 2026-11-10 to 2026-11-12
+Removed 2 snapshots from hist.jsonl, kept 2
+$ portwatch prune hist.jsonl --older-than 2026-11-11 --keep 1
+Removed 1 snapshot from hist.jsonl, kept 1
+$ portwatch prune hist.jsonl
+portwatch: error: prune needs --keep N and/or --older-than DATE
 
 $ portwatch list --port 48765 --json
 [

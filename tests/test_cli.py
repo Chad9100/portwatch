@@ -450,6 +450,44 @@ def test_prune_nothing_to_remove_leaves_file_alone(tmp_path, capsys):
     assert f.read_bytes() == before
 
 
+def test_prune_older_than(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert cli.main(["prune", str(f), "--older-than", "2026-11-11"]) == 0
+    assert capsys.readouterr().out.strip() == f"Removed 2 snapshots from {f}, kept 2"
+    assert _stamps(capsys, ["log", str(f)]) == ["2026-11-12T10:30:00Z"]
+    # inclusive of the boundary: a snapshot exactly at DATE survives
+    assert cli.main(["prune", str(f), "--older-than", "2026-11-12T09:00:00Z", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["removed"] == 0
+
+
+def test_prune_older_than_with_keep_applies_both(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert cli.main(["prune", str(f), "--older-than", "2026-11-10T10:30", "--keep", "2"]) == 0
+    assert capsys.readouterr().out.strip() == f"Removed 2 snapshots from {f}, kept 2"
+    assert _stamps(capsys, ["log", str(f)]) == ["2026-11-12T10:30:00Z"]
+
+
+def test_prune_older_than_can_empty_file_and_append_works(state, tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    assert cli.main(["prune", str(f), "--older-than", "2027-01-01"]) == 0
+    assert capsys.readouterr().out.strip() == f"Removed 4 snapshots from {f}, kept 0"
+    cli.main(["snapshot", str(f), "--append"])
+    assert capsys.readouterr().out.strip().endswith("(1 snapshot)")
+
+
+def test_prune_requires_a_criterion_and_valid_date(tmp_path, capsys):
+    f = _four_snapshot_history(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["prune", str(f)])
+    assert exc.value.code == 2
+    assert "needs --keep" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["prune", str(f), "--older-than", "yesterday"])
+    assert exc.value.code == 2
+    assert "invalid date" in capsys.readouterr().err
+    assert len(f.read_text(encoding="utf-8").splitlines()) == 4
+
+
 def test_prune_then_append_still_works(state, tmp_path, capsys):
     f = _four_snapshot_history(tmp_path)
     cli.main(["prune", str(f), "--keep", "1"])

@@ -63,17 +63,25 @@ def load_history(path: str) -> List[Tuple[str, List[PortEntry]]]:
     return history
 
 
-def prune_history(path: str, keep: int) -> Tuple[int, int]:
-    """Drop all but the newest `keep` snapshots from a history file.
+def prune_history(path: str, keep: Optional[int] = None, older_than: str = "") -> Tuple[int, int]:
+    """Drop old snapshots from a history file.
+
+    `keep` retains only the newest N snapshots; `older_than` (a normalised
+    timestamp) drops snapshots created strictly before it. With both, a
+    snapshot must satisfy both to survive.
 
     Returns (removed, kept). The file is validated first, so a file that is not
     a readable history is never touched. Surviving records are written back
     byte-for-byte, via a temporary file that replaces the original.
     """
-    load_history(path)
+    stamps = [created for created, _entries in load_history(path)]
     with open(path, encoding="utf-8") as fh:
         records = [ln for ln in fh.read().splitlines() if ln.strip()]
-    kept = records[len(records) - keep:] if keep < len(records) else records
+    kept = records
+    if older_than:
+        kept = [ln for ln, created in zip(kept, stamps) if created >= older_than]
+    if keep is not None and keep < len(kept):
+        kept = kept[len(kept) - keep:]
     removed = len(records) - len(kept)
     if removed:
         tmp = path + ".prune.tmp"

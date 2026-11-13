@@ -227,7 +227,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_prune = sub.add_parser("prune", help="trim old snapshots from a history file")
     p_prune.add_argument("file", help="history file written by 'snapshot --append'")
     p_prune.add_argument(
-        "--keep", metavar="N", type=int, required=True, help="number of newest snapshots to keep"
+        "--keep", metavar="N", type=int, help="number of newest snapshots to keep"
+    )
+    p_prune.add_argument(
+        "--older-than",
+        metavar="DATE",
+        help="drop snapshots created before this UTC date/time (a bare date means midnight)",
     )
     p_prune.add_argument("--json", action="store_true", help="machine-readable output")
 
@@ -264,11 +269,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             parser.error(str(exc))
     if args.command == "log" and args.last is not None and args.last < 1:
         parser.error("--last must be at least 1")
-    if args.command == "prune" and args.keep < 1:
-        parser.error("--keep must be at least 1")
+    older_than = ""
+    if args.command == "prune":
+        if args.keep is None and not args.older_than:
+            parser.error("prune needs --keep N and/or --older-than DATE")
+        if args.keep is not None and args.keep < 1:
+            parser.error("--keep must be at least 1")
+        if args.older_than:
+            try:
+                older_than = parse_since(args.older_than)
+            except ValueError as exc:
+                parser.error(str(exc))
     try:
         if args.command == "prune":
-            removed, kept = prune_history(args.file, args.keep)
+            removed, kept = prune_history(args.file, args.keep, older_than)
             if args.json:
                 print(json.dumps({"removed": removed, "kept": kept, "file": args.file}))
             else:
